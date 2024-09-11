@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>聊天室</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    #messages { border: 1px solid #ddd; height: 300px; overflow-y: scroll; padding: 10px; }
+    #inputArea { margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h2>Web 聊天室</h2>
+<div id="messages"></div>
+
+<div id="inputArea">
+  <input id="nickname" placeholder="输入昵称" autocomplete="off" />
+  <button onclick="signin()">加入聊天室</button>
+  <br>
+  <input id="message" placeholder="输入消息" autocomplete="off" />
+  <button onclick="sendMessage()">发送消息</button>
+</div>
+
+<script>
+  let socket;
+  let nickname;
+
+  // 加入聊天室
+  function signin() {
+    nickname = document.getElementById('nickname').value.trim();
+    if (!nickname) {
+      alert('昵称不能为空！');
+      return;
+    }
+
+    socket = new WebSocket('ws://127.0.0.1:2024');
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ protocol: 'signin', from: nickname }));
+      document.getElementById('messages').innerHTML += '【系统通知】已成功加入聊天室<br>';
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      displayMessage(data);
+    };
+
+    socket.onerror = () => {
+      alert('连接出错，请重试！');
+    };
+
+    socket.onclose = () => {
+      document.getElementById('messages').innerHTML += '【系统通知】连接已断开<br>';
+    };
+  }
+
+  // 显示消息
+  function displayMessage(data) {
+    let messageArea = document.getElementById('messages');
+    switch (data.protocol) {
+      case 'online':
+        messageArea.innerHTML += `【系统通知】欢迎：${data.online}，当前在线人数：${data.onlineCount}<br>`;
+        break;
+      case 'offline':
+        messageArea.innerHTML += `【系统通知】${data.offline}下线了，当前在线人数：${data.onlineCount}<br>`;
+        break;
+      case 'broadcast':
+        messageArea.innerHTML += `[@所有人] ${data.from}> ${data.message}<br>`;
+        break;
+      case 'p2p':
+        messageArea.innerHTML += `[@${data.to}] ${data.from}> ${data.message}<br>`;
+        break;
+      default:
+        messageArea.innerHTML += '【系统通知】未识别的消息<br>';
+        break;
+    }
+    messageArea.scrollTop = messageArea.scrollHeight;
+  }
+
+  // 发送消息
+  function sendMessage() {
+    let messageInput = document.getElementById('message').value.trim();
+    if (!messageInput || !socket) {
+      return;
+    }
+
+    let arrString = messageInput.split(':');
+    let sendServerData;
+
+    if (arrString.length === 2) {
+      // 点对点消息
+      sendServerData = {
+        protocol: 'p2p',
+        from: nickname,
+        to: arrString[0],
+        message: arrString[1],
+      };
+    } else {
+      // 广播消息
+      sendServerData = {
+        protocol: 'broadcast',
+        from: nickname,
+        message: messageInput,
+      };
+    }
+
+    socket.send(JSON.stringify(sendServerData));
+    document.getElementById('message').value = '';
+  }
+</script>
+
+</body>
+</html>

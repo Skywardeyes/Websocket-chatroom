@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天室</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #fb92c6, #fb61ae); /* 从浅粉色到粉色的渐变 */
+            color: #333;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 600px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 10px;
+            background-color: #990199; /* 紫色背景 */
+            color: white;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            border-bottom: 1px solid #ddd;
+            background-color: #f9f9fb;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            max-width: 75%;
+            word-wrap: break-word;
+        }
+
+        .message.system {
+            background-color: #e8e8e8;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .message.user {
+            background-color: #990199; /* 紫色背景 */
+            color: white;
+            align-self: flex-end;
+        }
+
+        .message.other {
+            background-color: #f1f1f1;
+            color: #333;
+            align-self: flex-start;
+        }
+
+        .input-area {
+            display: flex;
+            padding: 10px;
+            background-color: #f4f4f4;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+            font-size: 14px;
+        }
+
+        .input-area button {
+            padding: 10px 15px;
+            background-color: #990199; /* 紫色背景 */
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .input-area button:hover {
+            background-color: #4b0082; /* 更深的紫色 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <div class="header">Web 聊天室</div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="input-area">
+        <input id="nickname" placeholder="输入昵称并按回车加入" autocomplete="off" onkeydown="handleNicknameEnter(event)" />
+        <button onclick="signin()">加入</button>
+    </div>
+
+    <div class="input-area">
+        <input id="message" placeholder="输入消息并按回车发送" autocomplete="off" onkeydown="handleMessageEnter(event)" />
+        <button onclick="sendMessage()">发送</button>
+    </div>
+</div>
+
+<script>
+    let socket;
+    let nickname;
+
+    // 处理输入昵称时按下 Enter 键的事件
+    function handleNicknameEnter(event) {
+        if (event.key === 'Enter') {
+            signin();
+        }
+    }
+
+    // 加入聊天室
+    function signin() {
+        nickname = document.getElementById('nickname').value.trim();
+        if (!nickname) {
+            alert('昵称不能为空！');
+            return;
+        }
+
+        socket = new WebSocket('ws://127.0.0.1:2024');
+
+        socket.onopen = () => {
+            socket.send(JSON.stringify({ protocol: 'signin', from: nickname }));
+            displaySystemMessage('已成功加入聊天室');
+        };
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            displayMessage(data);
+        };
+
+        socket.onerror = () => {
+            alert('连接出错，请重试！');
+        };
+
+        socket.onclose = () => {
+            displaySystemMessage('连接已断开');
+        };
+    }
+
+    // 显示系统消息
+    function displaySystemMessage(message) {
+        const messageArea = document.getElementById('messages');
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message system';
+        messageElement.textContent = `【系统通知】${message}`;
+        messageArea.appendChild(messageElement);
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+
+    // 显示用户消息
+    function displayMessage(data) {
+        const messageArea = document.getElementById('messages');
+        const messageElement = document.createElement('div');
+
+        switch (data.protocol) {
+            case 'online':
+                displaySystemMessage(`欢迎：${data.online}，当前在线人数：${data.onlineCount}`);
+                break;
+            case 'offline':
+                displaySystemMessage(`${data.offline}下线了，当前在线人数：${data.onlineCount}`);
+                break;
+            case 'broadcast':
+                messageElement.className = data.from === nickname ? 'message user' : 'message other';
+                messageElement.textContent = `[@所有人] ${data.from}> ${data.message}`;
+                messageArea.appendChild(messageElement);
+                break;
+            case 'p2p':
+                messageElement.className = data.from === nickname ? 'message user' : 'message other';
+                messageElement.textContent = `[@${data.to}] ${data.from}> ${data.message}`;
+                messageArea.appendChild(messageElement);
+                break;
+            default:
+                displaySystemMessage('未识别的消息');
+                break;
+        }
+
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+
+    // 处理消息输入时按下 Enter 键的事件
+    function handleMessageEnter(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    }
+
+    // 发送消息
+    function sendMessage() {
+        const messageInput = document.getElementById('message').value.trim();
+        if (!messageInput || !socket) {
+            return;
+        }
+
+        let arrString = messageInput.split(':');
+        let sendServerData;
+
+        if (arrString.length === 2) {
+            // 点对点消息
+            sendServerData = {
+                protocol: 'p2p',
+                from: nickname,
+                to: arrString[0],
+                message: arrString[1],
+            };
+        } else {
+            // 广播消息
+            sendServerData = {
+                protocol: 'broadcast',
+                from: nickname,
+                message: messageInput,
+            };
+        }
+
+        socket.send(JSON.stringify(sendServerData));
+        document.getElementById('message').value = '';
+    }
+</script>
+
+</body>
+</html>
